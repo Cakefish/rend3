@@ -128,6 +128,17 @@ impl ObjectManager {
             })
             .unwrap_or(&mut [])
     }
+
+    pub fn get_material_handle(&mut self, handle: RawObjectHandle) -> MaterialHandle {
+        let object = self.registry.get_value(handle);
+        object.material_handle.clone()
+    }
+
+    pub fn get_mesh_handle(&mut self, handle: RawObjectHandle) -> MeshHandle {
+        let object = self.registry.get_value(handle);
+        object.mesh_handle.clone()
+    }
+
 }
 
 impl Default for ObjectManager {
