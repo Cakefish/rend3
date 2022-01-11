@@ -27,10 +27,10 @@ use crate::{common, culling, pbr, skybox, tonemapping};
 /// Handles and information for a single type of transparency in the PBR
 /// pipeline.
 pub struct PerTransparencyInfo {
-    pub ty: pbr::TransparencyType,
-    pub pre_cull: DataHandle<Buffer>,
-    pub shadow_cull: Vec<DataHandle<culling::PerMaterialArchetypeData>>,
-    pub cull: DataHandle<culling::PerMaterialArchetypeData>,
+    ty: pbr::TransparencyType,
+    pre_cull: DataHandle<Buffer>,
+    shadow_cull: Vec<DataHandle<culling::PerMaterialArchetypeData>>,
+    cull: DataHandle<culling::PerMaterialArchetypeData>,
 }
 
 /// Starter RenderGraph.
