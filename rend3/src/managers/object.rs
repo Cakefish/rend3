@@ -9,7 +9,7 @@ use crate::{
     util::{frustum::BoundingSphere, registry::ArchetypicalRegistry},
 };
 use glam::{Mat4, Vec3A};
-use rend3_types::{Material, MaterialHandle, MeshHandle, RawObjectHandle};
+use rend3_types::{Material, MaterialHandle, MeshHandle, ObjectChange, RawObjectHandle};
 
 #[repr(C, align(16))]
 #[derive(Debug, Copy, Clone)]
@@ -134,19 +134,21 @@ impl ObjectManager {
             .unwrap_or(&mut [])
     }
 
-    pub fn get_material_handle(&self, handle: RawObjectHandle) -> MaterialHandle {
-        let object = self.registry.get_value(handle);
-        object.material_handle.clone()
-    }
-
-    pub fn get_mesh_handle(&self, handle: RawObjectHandle) -> MeshHandle {
-        let object = self.registry.get_value(handle);
-        object.mesh_handle.clone()
-    }
-
-    pub fn get_transform(&self, handle: RawObjectHandle) -> Mat4 {
-        let object = self.registry.get_value(handle);
-        object.input.transform.clone()
+    pub fn duplicate_object(
+        &mut self,
+        src_handle: ObjectHandle,
+        dst_handle: ObjectHandle,
+        change: ObjectChange,
+        mesh_manager: &MeshManager,
+        material_manager: &mut MaterialManager,
+    ) {
+        let src_obj = self.registry.get_value_mut(src_handle.get_raw());
+        let dst_obj = Object {
+            mesh: change.mesh.unwrap_or_else(|| src_obj.mesh_handle.clone()),
+            material: change.material.unwrap_or_else(|| src_obj.material_handle.clone()),
+            transform: change.transform.unwrap_or(src_obj.input.transform),
+        };
+        self.fill(&dst_handle, dst_obj, mesh_manager, material_manager);
     }
 }
 
