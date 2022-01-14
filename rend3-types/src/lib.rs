@@ -1,4 +1,4 @@
-use glam::{Mat4, UVec2, Vec2, Vec3, Vec3A};
+use glam::{Mat4, UVec2, Vec2, Vec3, Vec3A, Vec4};
 use std::{
     fmt::Debug,
     hash::Hash,
@@ -151,31 +151,6 @@ declare_raw_handle!(
 );
 
 macro_rules! changeable_struct {
-    ($(#[$outer:meta])* pub struct $name:ident <- nodefault $name_change:ident { $($(#[$inner:meta])* $field_vis:vis $field_name:ident : $field_type:ty),* $(,)? } ) => {
-        $(#[$outer])*
-        #[derive(Debug, Default, Clone)]
-        pub struct $name {
-            $(
-                $(#[$inner])* $field_vis $field_name : $field_type
-            ),*
-        }
-        impl $name {
-            pub fn update_from_changes(&mut self, change: $name_change) {
-                $(
-                    if let Some(inner) = change.$field_name {
-                        self.$field_name = inner;
-                    }
-                );*
-            }
-        }
-        #[doc = concat!("Describes a modification to a ", stringify!($name), ".")]
-        #[derive(Debug, Default, Clone)]
-        pub struct $name_change {
-            $(
-                $field_vis $field_name : Option<$field_type>
-            ),*
-        }
-    };
     ($(#[$outer:meta])* pub struct $name:ident <- $name_change:ident { $($(#[$inner:meta])* $field_vis:vis $field_name:ident : $field_type:ty),* $(,)? } ) => {
         $(#[$outer])*
         #[derive(Debug, Clone)]
@@ -217,7 +192,6 @@ pub enum VertexBufferType {
     Uv0,
     Uv1,
     Colors,
-    MaterialIndices,
 }
 
 #[derive(Debug, Error)]
@@ -248,7 +222,8 @@ pub struct MeshBuilder {
     vertex_uv0: Option<Vec<Vec2>>,
     vertex_uv1: Option<Vec<Vec2>>,
     vertex_colors: Option<Vec<[u8; 4]>>,
-    vertex_material_indices: Option<Vec<u32>>,
+    vertex_joint_indices: Option<Vec<[u16; 4]>>,
+    vertex_joint_weights: Option<Vec<Vec4>>,
     vertex_count: usize,
 
     indices: Option<Vec<u32>>,
@@ -321,13 +296,23 @@ impl MeshBuilder {
         self
     }
 
-    /// Add material indices to the given mesh.
+    /// Add vertex joint indices to the given mesh.
     ///
     /// # Panic
     ///
     /// Will panic if the length is different from the position buffer length.
-    pub fn with_vertex_material_indices(mut self, material_indices: Vec<u32>) -> Self {
-        self.vertex_material_indices = Some(material_indices);
+    pub fn with_vertex_joint_indices(mut self, joint_indices: Vec<[u16; 4]>) -> Self {
+        self.vertex_joint_indices = Some(joint_indices);
+        self
+    }
+
+    /// Add vertex joint weights to the given mesh.
+    ///
+    /// # Panic
+    ///
+    /// Will panic if the length is different from the position buffer length.
+    pub fn with_vertex_joint_weights(mut self, joint_weights: Vec<Vec4>) -> Self {
+        self.vertex_joint_weights = Some(joint_weights);
         self
     }
 
@@ -393,7 +378,8 @@ impl MeshBuilder {
             vertex_uv0: self.vertex_uv0.unwrap_or_else(|| vec![Vec2::ZERO; length]),
             vertex_uv1: self.vertex_uv1.unwrap_or_else(|| vec![Vec2::ZERO; length]),
             vertex_colors: self.vertex_colors.unwrap_or_else(|| vec![[255; 4]; length]),
-            vertex_material_indices: self.vertex_material_indices.unwrap_or_else(|| vec![0; length]),
+            vertex_joint_indices: self.vertex_joint_indices.unwrap_or_else(|| vec![[0; 4]; length]),
+            vertex_joint_weights: self.vertex_joint_weights.unwrap_or_else(|| vec![Vec4::ZERO; length]),
             indices: self.indices.unwrap_or_else(|| (0..length as u32).collect()),
         };
 
@@ -438,7 +424,8 @@ pub struct Mesh {
     pub vertex_uv0: Vec<Vec2>,
     pub vertex_uv1: Vec<Vec2>,
     pub vertex_colors: Vec<[u8; 4]>,
-    pub vertex_material_indices: Vec<u32>,
+    pub vertex_joint_indices: Vec<[u16; 4]>,
+    pub vertex_joint_weights: Vec<Vec4>,
 
     pub indices: Vec<u32>,
 }
@@ -452,7 +439,8 @@ impl Clone for Mesh {
             vertex_uv0: self.vertex_uv0.clone(),
             vertex_uv1: self.vertex_uv1.clone(),
             vertex_colors: self.vertex_colors.clone(),
-            vertex_material_indices: self.vertex_material_indices.clone(),
+            vertex_joint_indices: self.vertex_joint_indices.clone(),
+            vertex_joint_weights: self.vertex_joint_weights.clone(),
             indices: self.indices.clone(),
         }
     }
@@ -474,7 +462,6 @@ impl Mesh {
             (self.vertex_uv0.len(), VertexBufferType::Uv0),
             (self.vertex_uv1.len(), VertexBufferType::Uv1),
             (self.vertex_colors.len(), VertexBufferType::Colors),
-            (self.vertex_material_indices.len(), VertexBufferType::MaterialIndices),
         ]
         .iter()
         .find_map(|&(len, ty)| if len != position_length { Some((len, ty)) } else { None });
