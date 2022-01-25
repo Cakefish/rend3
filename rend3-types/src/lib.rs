@@ -1,3 +1,8 @@
+//! Type declarations for the rend3 3D rendering crate.
+//!
+//! This is reexported in the rend3 crate proper and includes all the "surface"
+//! api arguments.
+
 use glam::{Mat4, UVec2, Vec2, Vec3, Vec3A, Vec4};
 use std::{
     fmt::Debug,
@@ -12,10 +17,12 @@ use thiserror::Error;
 /// Reexport of the glam version rend3 is using.
 pub use glam;
 
-/// Non-owning resource handle. Not part of rend3's external interface, but
-/// needed to interface with rend3's internal datastructures if writing your own
-/// structures or render routines.
+/// Non-owning resource handle.
+///
+/// Not part of rend3's external interface, but needed to interface with rend3's
+/// internal datastructures if writing your own structures or render routines.
 pub struct RawResourceHandle<T> {
+    /// Underlying value of the handle.
     pub idx: usize,
     _phantom: PhantomData<T>,
 }
@@ -130,7 +137,8 @@ declare_handle!(
     TextureHandle<Texture>,
     MaterialHandle<MaterialTag>,
     ObjectHandle<Object>,
-    DirectionalLightHandle<DirectionalLight>
+    DirectionalLightHandle<DirectionalLight>,
+    SkeletonHandle<Skeleton>
 );
 
 #[macro_export]
@@ -147,7 +155,8 @@ declare_raw_handle!(
     RawTextureHandle<Texture>,
     RawMaterialHandle<MaterialTag>,
     RawObjectHandle<Object>,
-    RawDirectionalLightHandle<DirectionalLight>
+    RawDirectionalLightHandle<DirectionalLight>,
+    RawSkeletonHandle<Skeleton>
 );
 
 macro_rules! changeable_struct {
@@ -180,10 +189,15 @@ macro_rules! changeable_struct {
 
 // WGPU REEXPORTS
 #[doc(inline)]
-pub use wgt::{Backend, Backends, BufferUsages, Color, DeviceType, PresentMode, TextureFormat, TextureUsages};
+pub use wgt::{Backend, Backends, Color, DeviceType, PresentMode, TextureFormat, TextureUsages};
 
+/// The maximum amount of vertices any one object can have.
+///
+/// The value allows for 8 bits of information packed in the high 8 bits of the
+/// index for object recombination.
 pub const MAX_VERTEX_COUNT: usize = 1 << 24;
 
+/// Identifies the semantic use of a vertex buffer.
 #[derive(Debug, Copy, Clone)]
 pub enum VertexBufferType {
     Position,
@@ -194,6 +208,7 @@ pub enum VertexBufferType {
     Colors,
 }
 
+/// Error returned from mesh validation.
 #[derive(Debug, Error)]
 pub enum MeshValidationError {
     #[error("Mesh's {ty:?} buffer has {actual} vertices but the position buffer has {expected}")]
@@ -831,10 +846,17 @@ pub trait Material: Send + Sync + 'static {
     fn to_data(&self, slice: &mut [u8]);
 }
 
+/// Source of a mesh for an object.
+#[derive(Clone, Debug)]
+pub enum ObjectMeshKind {
+    Animated(SkeletonHandle),
+    Static(MeshHandle),
+}
+
 changeable_struct! {
     /// An object in the world that is composed of a [`Mesh`] and [`Material`].
     pub struct Object <- ObjectChange {
-        pub mesh: MeshHandle,
+        pub mesh_kind: ObjectMeshKind,
         pub material: MaterialHandle,
         pub transform: Mat4,
     }
@@ -884,6 +906,7 @@ changeable_struct! {
     }
 }
 
+/// The sample count when doing multisampling.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum SampleCount {
@@ -910,11 +933,22 @@ impl TryFrom<u8> for SampleCount {
 }
 
 impl SampleCount {
+    /// Determines if a resolve texture is needed for this texture.
     pub fn needs_resolve(self) -> bool {
         self != Self::One
     }
 }
 
+/// Describes the "Handedness" of a given coordinate system. Affects math done
+/// in the space.
+///
+/// While a weird term, if you make your thumb X, your pointer Y,
+/// and your middle finger Z, the handedness can be determined by which hand can
+/// contort to represent the coordinate system.
+///
+/// For example  
+/// +X right, +Y up, +Z _into_ the screen is left handed.  
+/// +X right, +Y up, +Z _out of_ the screen is right handed.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Handedness {
     Left,
@@ -924,5 +958,42 @@ pub enum Handedness {
 impl Default for Handedness {
     fn default() -> Self {
         Self::Left
+    }
+}
+
+/// A Skeleton stores the necessary data to do vertex skinning for an [Object].
+#[derive(Debug, Clone)]
+pub struct Skeleton {
+    /// Stores one transformation matrix for each joint. These are the
+    /// transformations that will be applied to the vertices affected by the
+    /// corresponding joint. Not to be confused with the transform matrix of the
+    /// joint itself.
+    ///
+    /// The `Skeleton::form_joint_transforms` constructor can be used to create
+    /// a Skeleton with the joint transform matrices instead.
+    pub joint_deltas: Vec<Mat4>,
+    pub mesh: MeshHandle,
+}
+
+impl Skeleton {
+    /// Creates a skeleton with the list of global transforms and inverse bind
+    /// transforms for each joint
+    pub fn from_joint_transforms(
+        mesh: MeshHandle,
+        joint_global_transforms: &[Mat4],
+        inverse_bind_transforms: &[Mat4],
+    ) -> Skeleton {
+        let joint_deltas = Self::compute_joint_matrices(joint_global_transforms, inverse_bind_transforms);
+        Skeleton { joint_deltas, mesh }
+    }
+
+    /// Given a list of joint global positions and another one with inverse bind
+    /// matrices, multiplies them together to return the list of joint matrices.
+    pub fn compute_joint_matrices(joint_global_transforms: &[Mat4], inverse_bind_transforms: &[Mat4]) -> Vec<Mat4> {
+        joint_global_transforms
+            .iter()
+            .zip(inverse_bind_transforms.iter())
+            .map(|(global_pos, inv_bind_pos)| (*global_pos) * (*inv_bind_pos))
+            .collect()
     }
 }

@@ -1,10 +1,11 @@
 use crate::{
+    managers::ObjectManager,
     types::{Mesh, MeshHandle},
     util::{frustum::BoundingSphere, registry::ResourceRegistry},
 };
 use glam::{Vec2, Vec3};
 use range_alloc::RangeAllocator;
-use rend3_types::RawMeshHandle;
+use rend3_types::{RawMeshHandle, RawObjectHandle};
 use std::{
     mem::size_of,
     ops::Range,
@@ -31,6 +32,26 @@ pub const VERTEX_JOINT_INDEX_SIZE: usize = size_of::<[u16; 4]>();
 /// Size of a joint weight vector
 pub const VERTEX_JOINT_WEIGHT_SIZE: usize = size_of::<[f32; 4]>();
 
+/// Vertex buffer slot for positions
+pub const VERTEX_POSITION_SLOT: u32 = 0;
+/// Vertex buffer slot for normals
+pub const VERTEX_NORMAL_SLOT: u32 = 1;
+/// Vertex buffer slot for tangents
+pub const VERTEX_TANGENT_SLOT: u32 = 2;
+/// Vertex buffer slot for uv0
+pub const VERTEX_UV0_SLOT: u32 = 3;
+/// Vertex buffer slot for uv1
+pub const VERTEX_UV1_SLOT: u32 = 4;
+/// Vertex buffer slot for colors
+pub const VERTEX_COLOR_SLOT: u32 = 5;
+/// Vertex buffer slot for joint indices
+pub const VERTEX_JOINT_INDEX_SLOT: u32 = 6;
+/// Vertex buffer slot for joint weights
+pub const VERTEX_JOINT_WEIGHT_SLOT: u32 = 7;
+/// Vertex buffer slot for object indices
+/// Note that this slot is only used in GPU mode.
+pub const VERTEX_OBJECT_INDEX_SLOT: u32 = 8;
+
 /// Pre-allocated vertex count in the vertex megabuffers.
 pub const STARTING_VERTICES: usize = 1 << 16;
 /// Pre-allocated index count in the index megabuffer.
@@ -41,6 +62,7 @@ pub struct InternalMesh {
     pub vertex_range: Range<usize>,
     pub index_range: Range<usize>,
     pub bounding_sphere: BoundingSphere,
+    pub objects: Vec<RawObjectHandle>,
 }
 
 /// Set of megabuffers used by the mesh manager.
@@ -59,14 +81,14 @@ pub struct MeshBuffers {
 
 impl MeshBuffers {
     pub fn bind<'rpass>(&'rpass self, rpass: &mut RenderPass<'rpass>) {
-        rpass.set_vertex_buffer(0, self.vertex_position.slice(..));
-        rpass.set_vertex_buffer(1, self.vertex_normal.slice(..));
-        rpass.set_vertex_buffer(2, self.vertex_tangent.slice(..));
-        rpass.set_vertex_buffer(3, self.vertex_uv0.slice(..));
-        rpass.set_vertex_buffer(4, self.vertex_uv1.slice(..));
-        rpass.set_vertex_buffer(5, self.vertex_color.slice(..));
-        rpass.set_vertex_buffer(6, self.vertex_joint_index.slice(..));
-        rpass.set_vertex_buffer(7, self.vertex_joint_weight.slice(..));
+        rpass.set_vertex_buffer(VERTEX_POSITION_SLOT, self.vertex_position.slice(..));
+        rpass.set_vertex_buffer(VERTEX_NORMAL_SLOT, self.vertex_normal.slice(..));
+        rpass.set_vertex_buffer(VERTEX_TANGENT_SLOT, self.vertex_tangent.slice(..));
+        rpass.set_vertex_buffer(VERTEX_UV0_SLOT, self.vertex_uv0.slice(..));
+        rpass.set_vertex_buffer(VERTEX_UV1_SLOT, self.vertex_uv1.slice(..));
+        rpass.set_vertex_buffer(VERTEX_COLOR_SLOT, self.vertex_color.slice(..));
+        rpass.set_vertex_buffer(VERTEX_JOINT_INDEX_SLOT, self.vertex_joint_index.slice(..));
+        rpass.set_vertex_buffer(VERTEX_JOINT_WEIGHT_SLOT, self.vertex_joint_weight.slice(..));
         rpass.set_index_buffer(self.index.slice(..), IndexFormat::Uint32);
     }
 }
@@ -112,6 +134,7 @@ impl MeshManager {
         device: &Device,
         queue: &Queue,
         encoder: &mut CommandEncoder,
+        object_manager: &mut ObjectManager,
         handle: &MeshHandle,
         mesh: Mesh,
     ) {
@@ -127,6 +150,7 @@ impl MeshManager {
                 vertex_range: 0..0,
                 index_range: 0..0,
                 bounding_sphere: BoundingSphere::from_mesh(&[]),
+                objects: Vec::new(),
             };
 
             self.registry.insert(handle, mesh);
@@ -144,7 +168,13 @@ impl MeshManager {
         };
 
         if let Some((needed_verts, needed_indices)) = needed {
-            self.reallocate_buffers(device, encoder, needed_verts as u32, needed_indices as u32);
+            self.reallocate_buffers(
+                device,
+                encoder,
+                object_manager,
+                needed_verts as u32,
+                needed_indices as u32,
+            );
             vertex_range = self.vertex_alloc.allocate_range(vertex_count).ok();
             index_range = self.index_alloc.allocate_range(index_count).ok();
         }
@@ -204,9 +234,100 @@ impl MeshManager {
             vertex_range,
             index_range,
             bounding_sphere,
+            objects: Vec::new(),
         };
 
         self.registry.insert(handle, mesh);
+    }
+
+    /// Duplicates a mesh's vertex data so that it can be skinned on the GPU.
+    pub fn allocate_skeleton_mesh(
+        &mut self,
+        device: &Device,
+        _queue: &Queue,
+        encoder: &mut CommandEncoder,
+        object_manager: &mut ObjectManager,
+        mesh_handle: &MeshHandle,
+    ) -> Range<usize> {
+        // Need to fetch internal data twice, because the returned mesh borrows &self
+        let needed_verts = self.internal_data(mesh_handle.get_raw()).vertex_range.len();
+        let vertex_range = match self.vertex_alloc.allocate_range(needed_verts) {
+            Ok(range) => range,
+            Err(_) => {
+                self.reallocate_buffers(device, encoder, object_manager, needed_verts as u32, 0);
+                self.vertex_alloc
+                    .allocate_range(needed_verts)
+                    .expect("We just reallocated")
+            }
+        };
+
+        let original = self.internal_data(mesh_handle.get_raw());
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_position,
+            (original.vertex_range.start * VERTEX_POSITION_SIZE) as u64,
+            &self.buffers.vertex_position,
+            (vertex_range.start * VERTEX_POSITION_SIZE) as u64,
+            (vertex_range.len() * VERTEX_POSITION_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_normal,
+            (original.vertex_range.start * VERTEX_NORMAL_SIZE) as u64,
+            &self.buffers.vertex_normal,
+            (vertex_range.start * VERTEX_NORMAL_SIZE) as u64,
+            (vertex_range.len() * VERTEX_NORMAL_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_tangent,
+            (original.vertex_range.start * VERTEX_TANGENT_SIZE) as u64,
+            &self.buffers.vertex_tangent,
+            (vertex_range.start * VERTEX_TANGENT_SIZE) as u64,
+            (vertex_range.len() * VERTEX_TANGENT_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_uv0,
+            (original.vertex_range.start * VERTEX_UV_SIZE) as u64,
+            &self.buffers.vertex_uv0,
+            (vertex_range.start * VERTEX_UV_SIZE) as u64,
+            (vertex_range.len() * VERTEX_UV_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_uv1,
+            (original.vertex_range.start * VERTEX_UV_SIZE) as u64,
+            &self.buffers.vertex_uv1,
+            (vertex_range.start * VERTEX_UV_SIZE) as u64,
+            (vertex_range.len() * VERTEX_UV_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_color,
+            (original.vertex_range.start * VERTEX_COLOR_SIZE) as u64,
+            &self.buffers.vertex_color,
+            (vertex_range.start * VERTEX_COLOR_SIZE) as u64,
+            (vertex_range.len() * VERTEX_COLOR_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_joint_index,
+            (original.vertex_range.start * VERTEX_JOINT_INDEX_SIZE) as u64,
+            &self.buffers.vertex_joint_index,
+            (vertex_range.start * VERTEX_JOINT_INDEX_SIZE) as u64,
+            (vertex_range.len() * VERTEX_JOINT_INDEX_SIZE) as u64,
+        );
+
+        encoder.copy_buffer_to_buffer(
+            &self.buffers.vertex_joint_weight,
+            (original.vertex_range.start * VERTEX_JOINT_WEIGHT_SIZE) as u64,
+            &self.buffers.vertex_joint_weight,
+            (vertex_range.start * VERTEX_JOINT_WEIGHT_SIZE) as u64,
+            (vertex_range.len() * VERTEX_JOINT_WEIGHT_SIZE) as u64,
+        );
+
+        vertex_range
     }
 
     pub fn buffers(&self) -> &MeshBuffers {
@@ -215,6 +336,10 @@ impl MeshManager {
 
     pub fn internal_data(&self, handle: RawMeshHandle) -> &InternalMesh {
         self.registry.get(handle)
+    }
+
+    pub fn internal_data_mut(&mut self, handle: RawMeshHandle) -> &mut InternalMesh {
+        self.registry.get_mut(handle)
     }
 
     pub fn ready(&mut self) {
@@ -235,6 +360,7 @@ impl MeshManager {
         &mut self,
         device: &Device,
         encoder: &mut CommandEncoder,
+        object_manager: &mut ObjectManager,
         needed_verts: u32,
         needed_indices: u32,
     ) {
@@ -315,6 +441,22 @@ impl MeshManager {
                 &new_vert_range,
                 VERTEX_COLOR_SIZE,
             );
+            copy_vert(
+                encoder,
+                &self.buffers.vertex_joint_index,
+                &new_buffers.vertex_joint_index,
+                mesh,
+                &new_vert_range,
+                VERTEX_JOINT_INDEX_SIZE,
+            );
+            copy_vert(
+                encoder,
+                &self.buffers.vertex_joint_weight,
+                &new_buffers.vertex_joint_weight,
+                mesh,
+                &new_vert_range,
+                VERTEX_JOINT_WEIGHT_SIZE,
+            );
 
             // Copy indices over to new buffer, adjusting their value by the difference
             let index_copy_start = mesh.index_range.start * INDEX_SIZE;
@@ -330,6 +472,10 @@ impl MeshManager {
 
             mesh.vertex_range = new_vert_range;
             mesh.index_range = new_index_range;
+
+            for &object in &mesh.objects {
+                object_manager.set_mesh_ranges(object, mesh.vertex_range.clone(), mesh.index_range.clone())
+            }
         }
 
         self.buffers = new_buffers;

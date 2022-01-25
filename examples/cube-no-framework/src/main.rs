@@ -120,7 +120,7 @@ fn main() {
 
     // Combine the mesh and the material with a location to give an object.
     let object = rend3::types::Object {
-        mesh: mesh_handle,
+        mesh_kind: rend3::types::ObjectMeshKind::Static(mesh_handle),
         material: material_handle,
         transform: glam::Mat4::IDENTITY,
     };
@@ -188,7 +188,7 @@ fn main() {
             let (cmd_bufs, ready) = renderer.ready();
 
             // Build a rendergraph
-            let mut graph = rend3::RenderGraph::new();
+            let mut graph = rend3::graph::RenderGraph::new();
 
             // Add the default rendergraph without a skybox
             base_rendergraph.add_to_graph(
