@@ -1,11 +1,12 @@
 use crate::{
+    graph::GraphTextureStore,
     instruction::InstructionStreamPair,
     managers::{
         CameraManager, DirectionalLightManager, MaterialManager, MeshManager, ObjectManager, SkeletonManager,
         TextureManager,
     },
     renderer::RendererDataCore,
-    util::{graph_texture_store::GraphTextureStore, mipmap::MipmapGenerator},
+    util::mipmap::MipmapGenerator,
     InstanceAdapterDevice, Renderer, RendererInitializationError,
 };
 use parking_lot::Mutex;
@@ -28,18 +29,18 @@ pub fn create_renderer(
 
     let d2_texture_manager = TextureManager::new(
         &iad.device,
-        iad.mode,
+        iad.profile,
         limits.max_sampled_textures_per_shader_stage,
         TextureViewDimension::D2,
     );
     let d2c_texture_manager = TextureManager::new(
         &iad.device,
-        iad.mode,
+        iad.profile,
         limits.max_sampled_textures_per_shader_stage,
         TextureViewDimension::Cube,
     );
     let mesh_manager = MeshManager::new(&iad.device);
-    let material_manager = MaterialManager::new(&iad.device, iad.mode);
+    let material_manager = MaterialManager::new(&iad.device, iad.profile);
     let object_manager = ObjectManager::new();
     let directional_light_manager = DirectionalLightManager::new(&iad.device);
     let skeleton_manager = SkeletonManager::new();
@@ -60,7 +61,7 @@ pub fn create_renderer(
     Ok(Arc::new(Renderer {
         instructions: InstructionStreamPair::new(),
 
-        mode: iad.mode,
+        profile: iad.profile,
         adapter_info: iad.info,
         queue: iad.queue,
         device: iad.device,

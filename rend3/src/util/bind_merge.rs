@@ -1,10 +1,14 @@
-use std::num::NonZeroU32;
+//! Builders for BindGroup and BindGroupLayouts.
+//!
+//! Automates some boilerplate including index generation.
+use std::num::{NonZeroU32, NonZeroU64};
 
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-    BindingResource, BindingType, Buffer, Device, Sampler, ShaderStages, TextureView,
+    BindingResource, BindingType, Buffer, BufferBinding, Device, Sampler, ShaderStages, TextureView,
 };
 
+/// Builder for BindGroupLayouts.
 pub struct BindGroupLayoutBuilder {
     bgl_entries: Vec<BindGroupLayoutEntry>,
 }
@@ -40,6 +44,7 @@ impl Default for BindGroupLayoutBuilder {
     }
 }
 
+/// Builder for BindGroups.
 pub struct BindGroupBuilder<'a> {
     bg_entries: Vec<BindGroupEntry<'a>>,
 }
@@ -61,6 +66,15 @@ impl<'a> BindGroupBuilder<'a> {
 
     pub fn append_buffer(&mut self, buffer: &'a Buffer) -> &mut Self {
         self.append(buffer.as_entire_binding());
+        self
+    }
+
+    pub fn append_buffer_with_size(&mut self, buffer: &'a Buffer, size: u64) -> &mut Self {
+        self.append(BindingResource::Buffer(BufferBinding {
+            buffer,
+            offset: 0,
+            size: NonZeroU64::new(size),
+        }));
         self
     }
 

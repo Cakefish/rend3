@@ -77,7 +77,7 @@ pub fn ready(renderer: &Renderer) -> (Vec<CommandBuffer>, ReadyData) {
                     fill_invoke(
                         &mut data_core.material_manager,
                         &renderer.device,
-                        renderer.mode,
+                        renderer.profile,
                         &mut data_core.d2_texture_manager,
                         &handle,
                     );
@@ -88,7 +88,7 @@ pub fn ready(renderer: &Renderer) -> (Vec<CommandBuffer>, ReadyData) {
                     change_invoke(
                         &mut data_core.material_manager,
                         &renderer.device,
-                        renderer.mode,
+                        renderer.profile,
                         &mut data_core.d2_texture_manager,
                         &mut data_core.object_manager,
                         &handle,
@@ -141,11 +141,7 @@ pub fn ready(renderer: &Renderer) -> (Vec<CommandBuffer>, ReadyData) {
 
     // Do these in dependency order
     // Level 3
-    data_core.object_manager.ready(
-        &mut data_core.mesh_manager,
-        &mut data_core.material_manager,
-        &data_core.skeleton_manager,
-    );
+    data_core.object_manager.ready(&mut data_core.material_manager);
 
     // Level 2
     let d2_texture = data_core.d2_texture_manager.ready(&renderer.device);

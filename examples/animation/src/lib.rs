@@ -1,63 +1,40 @@
-use std::sync::Arc;
-
-fn load_gltf(
-    renderer: &rend3::Renderer,
-    path: &'static str,
-) -> (rend3::types::MeshHandle, rend3::types::MaterialHandle) {
-    let (doc, datas, _) = gltf::import(path).unwrap();
-    let mesh_data = doc.meshes().next().expect("no meshes in data.glb");
-
-    let primitive = mesh_data.primitives().next().expect("no primitives in data.glb");
-    let reader = primitive.reader(|b| Some(&datas.get(b.index())?.0[..b.length()]));
-
-    let vertex_positions: Vec<_> = reader.read_positions().unwrap().map(glam::Vec3::from).collect();
-    let vertex_normals: Vec<_> = reader.read_normals().unwrap().map(glam::Vec3::from).collect();
-    let vertex_tangents: Vec<_> = reader
-        .read_tangents()
-        .unwrap()
-        .map(glam::Vec4::from)
-        .map(glam::Vec4::truncate)
-        .collect();
-    let vertex_uvs: Vec<_> = reader
-        .read_tex_coords(0)
-        .unwrap()
-        .into_f32()
-        .map(glam::Vec2::from)
-        .collect();
-    let indices = reader.read_indices().unwrap().into_u32().collect();
-
-    let mesh = rend3::types::MeshBuilder::new(vertex_positions.to_vec(), rend3::types::Handedness::Right)
-        .with_vertex_normals(vertex_normals)
-        .with_vertex_tangents(vertex_tangents)
-        .with_vertex_uv0(vertex_uvs)
-        .with_indices(indices)
-        .with_flip_winding_order()
-        .build()
-        .unwrap();
-
-    // Add mesh to renderer's world
-    let mesh_handle = renderer.add_mesh(mesh);
-
-    // Add basic material with all defaults except a single color.
-    let material = primitive.material();
-    let metallic_roughness = material.pbr_metallic_roughness();
-    let material_handle = renderer.add_material(rend3_routine::pbr::PbrMaterial {
-        albedo: rend3_routine::pbr::AlbedoComponent::Value(metallic_roughness.base_color_factor().into()),
-        ..Default::default()
-    });
-
-    (mesh_handle, material_handle)
-}
+use std::{path::Path, sync::Arc};
 
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::One;
 
-#[derive(Default)]
-struct GltfExample {
-    object_handle: Option<rend3::types::ObjectHandle>,
-    directional_light_handle: Option<rend3::types::DirectionalLightHandle>,
+/// The application data, can only be obtained at `setup` time, so it's under an
+/// Option in the main struct.
+struct InitializedData {
+    loaded_scene: rend3_gltf::LoadedGltfScene,
+    loaded_instance: rend3_gltf::GltfSceneInstance,
+    animation_data: rend3_anim::AnimationData,
+    _directional_light_handle: rend3::types::DirectionalLightHandle,
+    animation_time: f32,
+    last_frame_time: instant::Instant,
 }
 
-impl rend3_framework::App for GltfExample {
+#[derive(Default)]
+struct AnimationExample {
+    /// The application data, or `None` if it hasn't been initialized already
+    data: Option<InitializedData>,
+}
+
+impl AnimationExample {
+    pub fn update(&mut self, renderer: &rend3::Renderer, delta: f32) {
+        let data = self.data.as_mut().unwrap();
+        data.animation_time = (data.animation_time + delta) % data.loaded_scene.animations[0].inner.duration;
+        rend3_anim::pose_animation_frame(
+            renderer,
+            &data.loaded_scene,
+            &data.loaded_instance,
+            &data.animation_data,
+            0,
+            data.animation_time,
+        )
+    }
+}
+
+impl rend3_framework::App for AnimationExample {
     const HANDEDNESS: rend3::types::Handedness = rend3::types::Handedness::Left;
 
     fn sample_count(&self) -> rend3::types::SampleCount {
@@ -71,22 +48,8 @@ impl rend3_framework::App for GltfExample {
         _routines: &Arc<rend3_framework::DefaultRoutines>,
         _surface_format: rend3::types::TextureFormat,
     ) {
-        // Create mesh and calculate smooth normals based on vertices.
-        //
-        // We do not need to keep these handles alive once we make the object
-        let (mesh, material) = load_gltf(renderer, concat!(env!("CARGO_MANIFEST_DIR"), "/data.glb"));
-
-        // Combine the mesh and the material with a location to give an object.
-        let object = rend3::types::Object {
-            mesh_kind: rend3::types::ObjectMeshKind::Static(mesh),
-            material,
-            transform: glam::Mat4::from_scale(glam::Vec3::new(1.0, 1.0, -1.0)),
-        };
-        // We need to keep the object alive.
-        self.object_handle = Some(renderer.add_object(object));
-
-        let view_location = glam::Vec3::new(3.0, 3.0, -5.0);
-        let view = glam::Mat4::from_euler(glam::EulerRot::XYZ, -0.55, 0.5, 0.0);
+        let view_location = glam::Vec3::new(0.0, 1.5, -5.0);
+        let view = glam::Mat4::from_euler(glam::EulerRot::XYZ, 0.0, 0.0, 0.0);
         let view = view * glam::Mat4::from_translation(-view_location);
 
         // Set camera's location
@@ -95,16 +58,40 @@ impl rend3_framework::App for GltfExample {
             view,
         });
 
+        // Load a gltf model with animation data
+        // Needs to be stored somewhere, otherwise all the data gets freed.
+        let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/resources/scene.gltf"));
+        let gltf_data = std::fs::read(&path).unwrap();
+        let parent_directory = path.parent().unwrap();
+        let (loaded_scene, loaded_instance) = pollster::block_on(rend3_gltf::load_gltf(
+            renderer,
+            &gltf_data,
+            &rend3_gltf::GltfLoadSettings::default(),
+            |p| rend3_gltf::filesystem_io_func(&parent_directory, p),
+        ))
+        .expect("Loading gltf scene");
+
         // Create a single directional light
         //
         // We need to keep the directional light handle alive.
-        self.directional_light_handle = Some(renderer.add_directional_light(rend3::types::DirectionalLight {
+        let directional_light_handle = renderer.add_directional_light(rend3::types::DirectionalLight {
             color: glam::Vec3::ONE,
             intensity: 10.0,
             // Direction will be normalized
             direction: glam::Vec3::new(-1.0, -4.0, 2.0),
             distance: 400.0,
-        }));
+        });
+
+        let init_data = InitializedData {
+            animation_data: rend3_anim::AnimationData::from_gltf_scene(&loaded_scene, &loaded_instance),
+            loaded_scene,
+            loaded_instance,
+            _directional_light_handle: directional_light_handle,
+            animation_time: 0.0,
+            last_frame_time: instant::Instant::now(),
+        };
+
+        self.data = Some(init_data);
     }
 
     fn handle_event(
@@ -127,10 +114,15 @@ impl rend3_framework::App for GltfExample {
                 control_flow(winit::event_loop::ControlFlow::Exit);
             }
             rend3_framework::Event::MainEventsCleared => {
+                let now = instant::Instant::now();
+                let last_frame_time = &mut self.data.as_mut().unwrap().last_frame_time;
+                let delta = now.duration_since(*last_frame_time).as_secs_f32();
+                *last_frame_time = now;
+                self.update(renderer, delta);
                 window.request_redraw();
             }
             // Render!
-            rend3_framework::Event::RedrawRequested(..) => {
+            rend3_framework::Event::RedrawRequested(_) => {
                 // Get a frame
                 let frame = rend3::util::output::OutputFrame::Surface {
                     surface: Arc::clone(surface.unwrap()),
@@ -154,8 +146,9 @@ impl rend3_framework::App for GltfExample {
                     &tonemapping_routine,
                     resolution,
                     SAMPLE_COUNT,
-                    glam::Vec4::ZERO,
+                    glam::Vec4::splat(0.15),
                 );
+
                 // Dispatch a render using the built up rendergraph!
                 graph.execute(renderer, frame, cmd_bufs, &ready);
             }
@@ -165,12 +158,13 @@ impl rend3_framework::App for GltfExample {
     }
 }
 
-fn main() {
-    let app = GltfExample::default();
+#[cfg_attr(target_os = "android", ndk_glue::main(backtrace = "on", logger(level = "debug")))]
+pub fn main() {
+    let app = AnimationExample::default();
     rend3_framework::start(
         app,
         winit::window::WindowBuilder::new()
-            .with_title("gltf-example")
+            .with_title("skinning-example")
             .with_maximized(true),
     );
 }
