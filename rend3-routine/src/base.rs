@@ -32,10 +32,10 @@ use crate::{
 /// Handles and information for a single type of transparency in the PBR
 /// pipeline.
 pub struct PerTransparencyInfo {
-    ty: pbr::TransparencyType,
-    pre_cull: DataHandle<Buffer>,
-    shadow_cull: Vec<DataHandle<culling::PerMaterialArchetypeData>>,
-    cull: DataHandle<culling::PerMaterialArchetypeData>,
+    pub ty: pbr::TransparencyType,
+    pub pre_cull: DataHandle<Buffer>,
+    pub shadow_cull: Vec<DataHandle<culling::PerMaterialArchetypeData>>,
+    pub cull: DataHandle<culling::PerMaterialArchetypeData>,
 }
 
 /// Starter RenderGraph.
