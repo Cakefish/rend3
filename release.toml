@@ -1,4 +1,8 @@
 consolidate-commits = true
-no-dev-version = true
-disable-tag = true
-pre-release-commit-message = "Bump version for release"
+consolidate-pushes = true
+dev-version = false
+sign-commit = true
+sign-tag = true
+allow-branch = ["trunk", "v*"]
+tag = false
+pre-release-commit-message = "Version {{version}}"

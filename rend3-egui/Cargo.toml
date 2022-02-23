@@ -1,14 +1,14 @@
 [package]
 name = "rend3-egui"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["The rend3 Developers"]
 edition = "2021"
-description = "Egui Render Routine for rend3"
+description = "Egui Render Routine for the rend3 rendering library."
 readme = "../README.md"
 license = "MIT OR Apache-2.0 OR Zlib"
 repository = "https://github.com/BVE-Reborn/rend3"
-keywords = ["3d", "graphics", "rend3", "renderer", "wgpu"]
-categories = ["game-development", "graphics", "rendering", "rendering::engine"]
+keywords = ["3d", "graphics", "rend3", "renderer", "egui"]
+categories = ["game-development", "graphics", "rendering", "rendering::engine", "wasm"]
 rust-version = "1.57"
 
 [dependencies]
@@ -16,5 +16,6 @@ egui = "0.16.0"
 egui_wgpu_backend = "0.16.0"
 epi = "0.16.0"
 glam = "0.20.0"
-rend3 = { version = "^0.2.0", path = "../rend3" }
+rend3 = { version = "^0.3.0", path = "../rend3" }
 wgpu = "0.12"
+wgpu-types = "0.12.0"

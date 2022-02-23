@@ -50,6 +50,7 @@ integration crates
 There are extension crates that are not required, but provide pre-made bits
 of useful code that I would recommend using.
 
+- `rend3-anim`: Skeletal animation playback utilities. Currently tied to rend3-gltf.
 - `rend3-framework`: Vastly simplifies correct handling of the window and
   surface across platforms.
 - `rend3-gltf`: Modular gltf file and scene loader.
