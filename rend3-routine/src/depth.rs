@@ -157,10 +157,7 @@ impl<M: DepthRenderableMaterial> DepthRoutine<M> {
             unclipped_depth_supported,
         );
 
-        Self {
-            pipelines,
-            bg,
-        }
+        Self { pipelines, bg }
     }
 
     #[allow(clippy::too_many_arguments)]
