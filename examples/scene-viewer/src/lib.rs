@@ -105,10 +105,14 @@ async fn load_gltf(
     let gltf_elapsed = gltf_start.elapsed();
     let resources_start = Instant::now();
     let (scene, instance) = rend3_gltf::load_gltf(renderer, &gltf_data, settings, |uri| async {
-        log::info!("Loading resource {}", uri);
-        let uri = uri;
-        let full_uri = parent_str.clone() + "/" + uri.as_str();
-        loader.get_asset(AssetPath::External(&full_uri)).await
+        if let Some(base64) = rend3_gltf::try_load_base64(&uri) {
+            Ok(base64)
+        } else {
+            log::info!("Loading resource {}", uri);
+            let uri = uri;
+            let full_uri = parent_str.clone() + "/" + uri.as_str();
+            loader.get_asset(AssetPath::External(&full_uri)).await
+        }
     })
     .await
     .unwrap();
@@ -572,6 +576,7 @@ impl rend3_framework::App for SceneViewer {
                     resolution,
                     self.samples,
                     Vec3::splat(self.ambient_light_level).extend(1.0),
+                    glam::Vec4::new(0.0, 0.0, 0.0, 1.0),
                 );
 
                 // Dispatch a render using the built up rendergraph!
