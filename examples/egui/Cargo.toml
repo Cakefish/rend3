@@ -13,13 +13,13 @@ path = "src/main.rs"
 
 [dependencies]
 # The egui immediate mode gui library
-egui = { git = "https://github.com/emilk/egui", rev = "5d15e3d367632289"}
+egui = "0.18.0"
 # Winit integration with egui
-egui-winit = { git = "https://github.com/emilk/egui", rev = "5d15e3d367632289"}
+egui_winit_platform = "0.15.0"
 # logging
 env_logger = { version = "0.9", default-features = false, features = ["termcolor", "atty"] }
 # Linear algebra library
-glam = "0.20.0"
+glam = "0.21.2"
 # Importing png's
 image = { version = "0.23.14", default-features = false, features = ["png"] }
 # Portable implementation of Instant.
@@ -37,4 +37,4 @@ winit = "0.26"
 # Opening URL's
 webbrowser = "0.5.5"
 # Creating textures
-wgpu = "0.12"
+wgpu = "0.13"

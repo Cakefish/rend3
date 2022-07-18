@@ -227,7 +227,8 @@ pub async fn async_start<A: App + 'static>(mut app: A, window_builder: WindowBui
     //
     // Assume android supports Rgba8Srgb, as it has 100% device coverage
     let format = surface.as_ref().map_or(TextureFormat::Rgba8UnormSrgb, |s| {
-        let format = s.get_preferred_format(&iad.adapter).unwrap();
+        let formats = s.get_supported_formats(&iad.adapter);
+        let format = formats[0];
 
         // Configure the surface to be ready for rendering.
         rend3::configure_surface(
@@ -235,7 +236,7 @@ pub async fn async_start<A: App + 'static>(mut app: A, window_builder: WindowBui
             &iad.device,
             format,
             glam::UVec2::new(window_size.width, window_size.height),
-            rend3::types::PresentMode::Mailbox,
+            rend3::types::PresentMode::Fifo,
         );
 
         format
@@ -380,7 +381,7 @@ fn handle_surface<A: App, T: 'static>(
                 &renderer.device,
                 format,
                 glam::UVec2::new(size.x, size.y),
-                rend3::types::PresentMode::Mailbox,
+                rend3::types::PresentMode::Fifo,
             );
             // Tell the renderer about the new aspect ratio.
             renderer.set_aspect_ratio(size.x as f32 / size.y as f32);

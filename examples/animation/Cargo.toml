@@ -18,7 +18,7 @@ path = "src/main.rs"
 # logging
 env_logger = { version = "0.9", default-features = false, features = ["termcolor", "atty"] }
 # Linear algebra library
-glam = "0.20.0"
+glam = "0.21.2"
 # std::time::Instant that works on wasm
 instant = "0.1"
 # block on async functions
@@ -35,13 +35,14 @@ rend3-anim = { version = "^0.3.0", path = "../../rend3-anim" }
 rend3-gltf = { version = "^0.3.0", path = "../../rend3-gltf" }
 # windowing
 winit = "0.26"
+image = { version = "0.23", features = ["jpeg"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_log = "0.2"
 console_error_panic_hook = "0.1"
 js-sys = "0.3"
 web-sys = "0.3"
-wasm-bindgen = "=0.2.78"
+wasm-bindgen = "=0.2.81"
 wasm-bindgen-futures = "0.4"
 
 [target.'cfg(target_os = "android")'.dependencies]
