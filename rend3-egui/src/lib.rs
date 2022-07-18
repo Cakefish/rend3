@@ -182,7 +182,7 @@ impl EguiRenderRoutine {
 }
 
 pub struct Input<'a> {
-    pub paint_jobs: &'a Vec<egui::epaint::ClippedPrimitive>,
+    pub clipped_meshes: &'a Vec<egui::ClippedPrimitive>,
     pub textures_delta: TexturesDelta,
     pub context: egui::Context,
 }
