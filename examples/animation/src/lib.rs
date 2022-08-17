@@ -1,4 +1,5 @@
 use rend3::types::DirectionalLightHandle;
+use winit::event::VirtualKeyCode;
 use std::{path::Path, sync::Arc};
 
 const SAMPLE_COUNT: rend3::types::SampleCount = rend3::types::SampleCount::Four;
@@ -131,6 +132,14 @@ impl rend3_framework::App for AnimationExample {
                 ..
             } => {
                 control_flow(winit::event_loop::ControlFlow::Exit);
+            }
+            rend3_framework::Event::WindowEvent {
+                event: winit::event::WindowEvent::KeyboardInput { input, .. },
+                ..
+            } => {
+                if let Some(VirtualKeyCode::Space) = input.virtual_keycode {
+                    self.animated_objects.remove(0);
+                }
             }
             rend3_framework::Event::MainEventsCleared => {
                 let now = instant::Instant::now();
