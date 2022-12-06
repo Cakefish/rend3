@@ -42,12 +42,15 @@ Per Keep a Changelog there are 6 main categories of changes:
 
 ### Changes
 - rend3: Update to wgpu 0.13, naga 0.9 @garyttierney
+- rend3: Convert all shaders to WGSL using a custom preprocessing solution @cwfitzgerald
 
 ### Fixes
 - Fixed mismatched BGLs when using a custom material with no cutout specification
 - Fixed PbrMaterial instead of generic parameter M being used in forward and depth routines. @setzer22
 - Fixes loading of gltf with embedded base64 binary data.
 - Fixed building with `profiling/profile-with-tracing`. @SparkyPotato
+- Fixed panic when a mesh object with a skeleton was despawned. @setzer22
+- Fixed forward pass not writing to depth when no depth prepass was used. @IsseW
 
 ## v0.3.0
 
