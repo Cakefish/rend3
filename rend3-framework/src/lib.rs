@@ -253,6 +253,8 @@ pub async fn async_start<A: App<T> + 'static, T: 'static>(mut app: A, window_bui
             &mut data_core,
             &spp,
             &base_rendergraph.interfaces,
+            None,
+            None,
         )),
         skybox: Mutex::new(rend3_routine::skybox::SkyboxRoutine::new(
             &renderer,

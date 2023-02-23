@@ -427,6 +427,35 @@ fn surface_shading(light: DirectionalLight, pixel: PixelData, view_pos: vec3<f32
     return (color * light.color) * (light_attenuation * nol * occlusion);
 }
 
+fn fresnel(amount: f32, normal: vec3<f32>, view: vec3<f32>) -> f32 {
+	return pow((1.0 - clamp(dot(normalize(normal), normalize(view)), 0.0, 1.0)), amount);
+}
+
+fn surface_shading_toon(light: DirectionalLight, pixel: PixelData, view_pos: vec3<f32>, occlusion: f32) -> vec3<f32> {
+    // Configurable constants:
+    let shadow_size = 0.045;
+    let shadow_blend = 0.001;
+    let rimlight_size = 0.921;
+    let rimlight_blend = 0.01;
+    
+    let n_dot_l = dot(pixel.normal, light.direction);
+    let rounded = smoothstep(shadow_size, shadow_blend + shadow_size, n_dot_l);
+    let one_minus = 1.0 - rounded;
+    // TODO: where to get light_tint and attenuation
+    let mul1 = light.color * rounded; // * light_tint.rgb * attenuation;
+    let mul2 = one_minus * 1.4 /* * shadow_color.rgb */;
+    let add1 = mul1 + mul2;
+    let add3 = rimlight_blend + rimlight_size;
+    let basic_fresnel = fresnel(1.0, pixel.normal, view_pos);
+    let smoothed = smoothstep(rimlight_size, add3, basic_fresnel);
+    let add2 = add1 + smoothed;
+    let diffuse = pixel.diffuse_color * brdf_fd_lambert();
+    return diffuse + pixel.albedo.xyz * add2;
+    
+
+}
+
+
 @fragment
 fn fs_main(vs_out: VertexOutput) -> @location(0) vec4<f32> {
     {{#if (eq profile "GpuDriven")}}
@@ -454,7 +483,8 @@ fn fs_main(vs_out: VertexOutput) -> @location(0) vec4<f32> {
             shadow_value = shadow_sample_pcf5(shadows, comparison_sampler, shadow_coords, i, shadow_ndc.z);
         }
 
-        color += surface_shading(light, pixel, v, shadow_value * pixel.ambient_occlusion);
+        // color += surface_shading(light, pixel, v, shadow_value * pixel.ambient_occlusion);
+        color += surface_shading_toon(light, pixel, v, shadow_value * pixel.ambient_occlusion);
     }
 
     let ambient = uniforms.ambient * pixel.albedo;

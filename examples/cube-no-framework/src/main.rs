@@ -107,8 +107,14 @@ fn main() {
     let base_rendergraph = rend3_routine::base::BaseRenderGraph::new(&renderer, &spp);
 
     let mut data_core = renderer.data_core.lock();
-    let pbr_routine =
-        rend3_routine::pbr::PbrRoutine::new(&renderer, &mut data_core, &spp, &base_rendergraph.interfaces);
+    let pbr_routine = rend3_routine::pbr::PbrRoutine::new(
+        &renderer,
+        &mut data_core,
+        &spp,
+        &base_rendergraph.interfaces,
+        None,
+        None,
+    );
     drop(data_core);
     let tonemapping_routine = rend3_routine::tonemapping::TonemappingRoutine::new(
         &renderer,

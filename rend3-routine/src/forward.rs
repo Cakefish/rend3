@@ -27,7 +27,9 @@ use crate::{
 
 /// A set of pipelines for rendering a specific combination of a material.
 pub struct ForwardRoutine<M: Material> {
+    /// Pipeline with a sample count of 1
     pub pipeline_s1: RenderPipeline,
+    /// Pipeline with a sample count of 4
     pub pipeline_s4: RenderPipeline,
     pub _phantom: PhantomData<M>,
 }
@@ -65,20 +67,29 @@ impl<M: Material> ForwardRoutine<M> {
     ) -> Self {
         profiling::scope!("PrimaryPasses::new");
 
-        let sm_owned = renderer.device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("forward"),
-            source: ShaderSource::Wgsl(Cow::Owned(
-                spp.render_shader(
-                    "rend3-routine/opaque.wgsl",
-                    &ShaderConfig {
-                        profile: Some(renderer.profile),
-                    },
-                )
-                .unwrap(),
-            )),
-        });
+        // Don't build the default shader module unless we need it
+        let sm_owned = if vertex.is_none() || fragment.is_none() {
+            Some(
+                renderer.device.create_shader_module(ShaderModuleDescriptor {
+                    label: Some("forward"),
+                    source: ShaderSource::Wgsl(Cow::Owned(
+                        spp.render_shader(
+                            "rend3-routine/opaque.wgsl",
+                            &ShaderConfig {
+                                profile: Some(renderer.profile),
+                            },
+                        )
+                        .unwrap(),
+                    )),
+                }),
+            )
+        } else {
+            None
+        };
+
         let forward_pass_vert;
         let vert_entry_point;
+
         match vertex {
             Some((inner_name, inner)) => {
                 forward_pass_vert = inner;
@@ -86,7 +97,7 @@ impl<M: Material> ForwardRoutine<M> {
             }
             None => {
                 vert_entry_point = "vs_main";
-                forward_pass_vert = &sm_owned;
+                forward_pass_vert = sm_owned.as_ref().unwrap();
             }
         };
 
@@ -99,7 +110,7 @@ impl<M: Material> ForwardRoutine<M> {
             }
             None => {
                 frag_entry_point = "fs_main";
-                forward_pass_frag = &sm_owned;
+                forward_pass_frag = sm_owned.as_ref().unwrap();
             }
         };
 

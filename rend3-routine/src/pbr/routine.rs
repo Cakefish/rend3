@@ -1,5 +1,5 @@
 use rend3::{Renderer, RendererDataCore, ShaderPreProcessor};
-use wgpu::{BlendState, Features};
+use wgpu::{BlendState, Features, ShaderModule};
 
 use crate::{
     common::{PerMaterialArchetypeInterface, WholeFrameInterfaces},
@@ -23,6 +23,8 @@ impl PbrRoutine {
         data_core: &mut RendererDataCore,
         spp: &ShaderPreProcessor,
         interfaces: &WholeFrameInterfaces,
+        vertex: Option<(&str, &ShaderModule)>,
+        fragment: Option<(&str, &ShaderModule)>,
     ) -> Self {
         profiling::scope!("PbrRenderRoutine::new");
 
@@ -51,8 +53,8 @@ impl PbrRoutine {
                 spp,
                 interfaces,
                 &per_material,
-                None,
-                None,
+                vertex,
+                fragment,
                 &[],
                 match transparency {
                     TransparencyType::Opaque | TransparencyType::Cutout => None,
